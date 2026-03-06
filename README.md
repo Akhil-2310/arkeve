@@ -2,7 +2,9 @@
 
 > **Own your events and community.** A decentralized event platform built on [Arkiv Network](https://arkiv.network) where events, RSVPs, and attendance records are owned by organizers and verifiable on-chain.
 
-🔗 **Live Demo:** [arkeve.vercel.app](https://arkeve.vercel.app/)
+**Live Demo:** [Link](https://arkeve.vercel.app/)
+
+**Video Demo** [Link](https://www.loom.com/share/5d47b95863dd45369d58d8a5c1906892)
 
 ![Next.js](https://img.shields.io/badge/Next.js-16-black) ![TypeScript](https://img.shields.io/badge/TypeScript-5-blue) ![Arkiv SDK](https://img.shields.io/badge/Arkiv_SDK-0.6-orange) ![RainbowKit](https://img.shields.io/badge/RainbowKit-2-purple)
 
