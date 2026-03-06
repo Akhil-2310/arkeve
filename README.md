@@ -197,6 +197,12 @@ Open [http://localhost:3000](http://localhost:3000) for local development, or vi
 
 ArkEve uses the [Arkiv Network SDK](https://www.npmjs.com/package/@arkiv-network/sdk) (`@arkiv-network/sdk`) as its **only** data layer — no traditional database.
 
+## Block Explorer Links
+
+### [Link 1](https://explorer.kaolin.hoodi.arkiv.network/address/0x8b916003D0C8F1f468a720BA4Ab5EA9678bc6e61)
+
+### [Link 2](https://explorer.kaolin.hoodi.arkiv.network/address/0x7B232702D462aD2a9f4fa50E8415b318ABAbdE21)
+
 ### Client Setup — [`src/lib/arkiv.ts`](src/lib/arkiv.ts)
 
 | Client | Purpose |
