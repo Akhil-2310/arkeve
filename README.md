@@ -203,6 +203,8 @@ ArkEve uses the [Arkiv Network SDK](https://www.npmjs.com/package/@arkiv-network
 
 ### [Link 2](https://explorer.kaolin.hoodi.arkiv.network/address/0x7B232702D462aD2a9f4fa50E8415b318ABAbdE21)
 
+---
+
 ### Client Setup — [`src/lib/arkiv.ts`](src/lib/arkiv.ts)
 
 | Client | Purpose |
