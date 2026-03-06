@@ -5,7 +5,7 @@ import { useWallet } from '@/contexts/WalletContext';
 import { createRsvp, checkExistingRsvp } from '@/lib/entities';
 import { parseTransactionError } from '@/lib/errors';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
-import { Loader2, Check, UserPlus } from 'lucide-react';
+import { Loader2, Check, UserPlus, Clock } from 'lucide-react';
 
 interface RsvpButtonProps {
     eventKey: string;
@@ -23,6 +23,7 @@ export default function RsvpButton({
     const { address, connector, isConnected } = useWallet();
     const [loading, setLoading] = useState(false);
     const [done, setDone] = useState(false);
+    const [waitlisted, setWaitlisted] = useState(false);
     const [error, setError] = useState('');
     const [name, setName] = useState('');
     const [showNameInput, setShowNameInput] = useState(false);
@@ -35,14 +36,6 @@ export default function RsvpButton({
         );
     }
 
-    if (isFull) {
-        return (
-            <button className="btn btn-secondary btn-lg" disabled style={{ width: '100%' }}>
-                Event Full
-            </button>
-        );
-    }
-
     if (done) {
         return (
             <button className="btn btn-primary btn-lg" disabled style={{ width: '100%', opacity: 1 }}>
@@ -52,7 +45,16 @@ export default function RsvpButton({
         );
     }
 
-    const handleRsvp = async () => {
+    if (waitlisted) {
+        return (
+            <button className="btn btn-secondary btn-lg" disabled style={{ width: '100%', opacity: 1 }}>
+                <Clock size={18} />
+                On the Waitlist!
+            </button>
+        );
+    }
+
+    const handleRsvp = async (asWaitlist: boolean = false) => {
         if (!address || !connector) return;
 
         setLoading(true);
@@ -61,12 +63,17 @@ export default function RsvpButton({
         try {
             const exists = await checkExistingRsvp(eventKey, address);
             if (exists) {
-                setDone(true);
+                if (asWaitlist) setWaitlisted(true);
+                else setDone(true);
                 return;
             }
 
-            await createRsvp(connector, address, eventKey, { attendeeName: name || undefined }, eventDate);
-            setDone(true);
+            await createRsvp(connector, address, eventKey, { attendeeName: name || undefined }, eventDate, asWaitlist);
+            if (asWaitlist) {
+                setWaitlisted(true);
+            } else {
+                setDone(true);
+            }
             onSuccess();
         } catch (err: unknown) {
             setError(parseTransactionError(err));
@@ -74,6 +81,36 @@ export default function RsvpButton({
             setLoading(false);
         }
     };
+
+    // Event is full — show Join Waitlist
+    if (isFull) {
+        return (
+            <div>
+                <button
+                    className="btn btn-secondary btn-lg"
+                    onClick={() => handleRsvp(true)}
+                    disabled={loading}
+                    style={{ width: '100%' }}
+                >
+                    {loading ? (
+                        <>
+                            <Loader2 size={18} className="spin" />
+                            Joining Waitlist...
+                        </>
+                    ) : (
+                        <>
+                            <Clock size={18} />
+                            Join Waitlist
+                        </>
+                    )}
+                </button>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-tertiary)', marginTop: 8, textAlign: 'center' }}>
+                    This event is full. Join the waitlist to be notified if spots open up.
+                </p>
+                {error && <div className="error-message" style={{ marginTop: 12 }}>{error}</div>}
+            </div>
+        );
+    }
 
     return (
         <div>
@@ -89,7 +126,7 @@ export default function RsvpButton({
                     />
                     <button
                         className="btn btn-primary btn-lg"
-                        onClick={handleRsvp}
+                        onClick={() => handleRsvp(false)}
                         disabled={loading}
                         style={{ width: '100%' }}
                     >

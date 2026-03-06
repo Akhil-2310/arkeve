@@ -2,13 +2,13 @@
 
 import { useState, useEffect } from 'react';
 import { useWallet } from '@/contexts/WalletContext';
-import { queryEventsByOrganizer, queryRsvps, updateEventStatus, type ParsedEvent } from '@/lib/entities';
+import { queryEventsByOrganizer, queryRsvps, updateEventStatus, createAttendance, queryAttendances, type ParsedEvent, type ParsedRsvp, type ParsedAttendance } from '@/lib/entities';
 import { parseTransactionError } from '@/lib/errors';
 import CreateEventForm from '@/components/CreateEventForm';
 import EventCard from '@/components/EventCard';
 import { ConnectButton } from '@rainbow-me/rainbowkit';
 import Link from 'next/link';
-import { Plus, Calendar, TrendingUp, X, Play, Square, Pencil, Loader2 } from 'lucide-react';
+import { Plus, Calendar, TrendingUp, X, Play, Square, Pencil, Loader2, Users, CheckCircle } from 'lucide-react';
 
 function StatusBadge({ status }: { status: string }) {
     const colors: Record<string, { bg: string; text: string }> = {
@@ -38,6 +38,11 @@ export default function DashboardPage() {
     const [showCreateForm, setShowCreateForm] = useState(false);
     const [editingEvent, setEditingEvent] = useState<ParsedEvent | null>(null);
     const [statusUpdating, setStatusUpdating] = useState<string | null>(null);
+    const [expandedAttendees, setExpandedAttendees] = useState<string | null>(null);
+    const [attendeeList, setAttendeeList] = useState<ParsedRsvp[]>([]);
+    const [attendanceMap, setAttendanceMap] = useState<Record<string, boolean>>({});
+    const [loadingAttendees, setLoadingAttendees] = useState(false);
+    const [checkingIn, setCheckingIn] = useState<string | null>(null);
 
     const loadEvents = async () => {
         if (!address || !isOrganizer) {
@@ -82,6 +87,42 @@ export default function DashboardPage() {
             alert(parseTransactionError(err));
         } finally {
             setStatusUpdating(null);
+        }
+    };
+
+    const toggleAttendees = async (eventKey: string) => {
+        if (expandedAttendees === eventKey) {
+            setExpandedAttendees(null);
+            return;
+        }
+        setExpandedAttendees(eventKey);
+        setLoadingAttendees(true);
+        try {
+            const [rsvps, attendances] = await Promise.all([
+                queryRsvps(eventKey),
+                queryAttendances(eventKey),
+            ]);
+            setAttendeeList(rsvps);
+            const aMap: Record<string, boolean> = {};
+            attendances.forEach((a: ParsedAttendance) => { aMap[a.attendee] = true; });
+            setAttendanceMap(aMap);
+        } catch (err) {
+            console.error('Failed to load attendees:', err);
+        } finally {
+            setLoadingAttendees(false);
+        }
+    };
+
+    const handleCheckIn = async (event: ParsedEvent, attendeeWallet: string) => {
+        if (!address || !connector) return;
+        setCheckingIn(attendeeWallet);
+        try {
+            await createAttendance(connector, address, event.entityKey, attendeeWallet, event.date);
+            setAttendanceMap(prev => ({ ...prev, [attendeeWallet]: true }));
+        } catch (err) {
+            alert(parseTransactionError(err));
+        } finally {
+            setCheckingIn(null);
         }
     };
 
@@ -256,6 +297,74 @@ export default function DashboardPage() {
                                                 </>
                                             )}
                                         </div>
+                                    </div>
+
+                                    {/* Attendee list toggle */}
+                                    <div style={{ marginTop: 12, borderTop: '1px solid var(--border)', paddingTop: 12 }}>
+                                        <button
+                                            className="btn btn-sm btn-ghost"
+                                            style={{ fontSize: '0.8rem', padding: '4px 8px' }}
+                                            onClick={() => toggleAttendees(event.entityKey)}
+                                        >
+                                            <Users size={14} />
+                                            {expandedAttendees === event.entityKey ? 'Hide' : 'View'} Attendees ({rsvpCounts[event.entityKey] || 0})
+                                        </button>
+
+                                        {expandedAttendees === event.entityKey && (
+                                            <div style={{ marginTop: 12 }}>
+                                                {loadingAttendees ? (
+                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-tertiary)', fontSize: '0.85rem' }}>
+                                                        <Loader2 size={14} className="spin" /> Loading...
+                                                    </div>
+                                                ) : attendeeList.length === 0 ? (
+                                                    <p style={{ color: 'var(--text-tertiary)', fontSize: '0.85rem', margin: 0 }}>No attendees yet.</p>
+                                                ) : (
+                                                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                                        {attendeeList.map((rsvp) => (
+                                                            <div key={rsvp.entityKey} style={{
+                                                                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                                                                padding: '8px 12px', borderRadius: 'var(--radius-md)',
+                                                                background: 'rgba(255,255,255,0.03)', border: '1px solid var(--border)',
+                                                            }}>
+                                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                                                    <span style={{ fontSize: '0.85rem' }}>
+                                                                        {rsvp.attendeeName || `${rsvp.attendee.slice(0, 6)}...${rsvp.attendee.slice(-4)}`}
+                                                                    </span>
+                                                                    <span style={{
+                                                                        fontSize: '0.7rem', padding: '2px 6px', borderRadius: 10,
+                                                                        background: rsvp.status === 'confirmed' ? '#E8F5E9' : '#FFF3E0',
+                                                                        color: rsvp.status === 'confirmed' ? '#2E7D32' : '#F57C00',
+                                                                        fontWeight: 600, textTransform: 'uppercase',
+                                                                    }}>
+                                                                        {rsvp.status}
+                                                                    </span>
+                                                                </div>
+                                                                <div>
+                                                                    {attendanceMap[rsvp.attendee] ? (
+                                                                        <span style={{ display: 'flex', alignItems: 'center', gap: 4, color: '#2E7D32', fontSize: '0.8rem', fontWeight: 600 }}>
+                                                                            <CheckCircle size={14} /> Checked In
+                                                                        </span>
+                                                                    ) : (event.status === 'live' || event.status === 'ended') && rsvp.status === 'confirmed' ? (
+                                                                        <button
+                                                                            className="btn btn-sm"
+                                                                            style={{ fontSize: '0.75rem', padding: '2px 8px', background: 'var(--accent)', color: '#fff', border: 'none' }}
+                                                                            onClick={() => handleCheckIn(event, rsvp.attendee)}
+                                                                            disabled={checkingIn === rsvp.attendee}
+                                                                        >
+                                                                            {checkingIn === rsvp.attendee ? (
+                                                                                <Loader2 size={12} className="spin" />
+                                                                            ) : (
+                                                                                'Check In'
+                                                                            )}
+                                                                        </button>
+                                                                    ) : null}
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             ))}

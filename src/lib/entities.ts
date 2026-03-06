@@ -50,6 +50,15 @@ export interface ParsedRsvp extends RsvpData {
     entityKey: string;
     eventKey: string;
     attendee: string;
+    status: string; // 'confirmed' | 'waitlisted'
+}
+
+export interface ParsedAttendance {
+    entityKey: string;
+    eventKey: string;
+    attendee: string;
+    checkedInBy: string;
+    checkedInAt: string;
 }
 
 // ========================
@@ -73,6 +82,7 @@ export const EXPIRY = {
     ORGANIZER: ExpirationTime.fromDays(365),    // Profiles last 1 year
     EVENT_BUFFER_DAYS: 7,                        // Events expire 7 days after event date
     RSVP_BUFFER_DAYS: 1,                         // RSVPs expire 1 day after event date
+    ATTENDANCE_BUFFER_DAYS: 30,                  // Proof of attendance persists 30 days
 };
 
 // ========================
@@ -281,7 +291,8 @@ export async function createRsvp(
     walletAddress: `0x${string}`,
     eventKey: string,
     data: RsvpData,
-    eventDate: string
+    eventDate: string,
+    isWaitlist: boolean = false
 ) {
     const client = await getArkivWalletClient(connector, walletAddress);
     const expiryDays = daysUntil(eventDate, EXPIRY.RSVP_BUFFER_DAYS);
@@ -294,7 +305,35 @@ export async function createRsvp(
             { key: 'type', value: 'rsvp' },
             { key: 'eventKey', value: eventKey },
             { key: 'attendee', value: walletAddress.toLowerCase() },
-            { key: 'status', value: 'confirmed' },
+            { key: 'status', value: isWaitlist ? 'waitlisted' : 'confirmed' },
+        ],
+        expiresIn: ExpirationTime.fromDays(expiryDays),
+    });
+
+    return { entityKey, txHash };
+}
+
+export async function createAttendance(
+    connector: Connector,
+    walletAddress: `0x${string}`,
+    eventKey: string,
+    attendeeWallet: string,
+    eventDate: string
+) {
+    const client = await getArkivWalletClient(connector, walletAddress);
+    const expiryDays = daysUntil(eventDate, EXPIRY.ATTENDANCE_BUFFER_DAYS);
+
+    const { entityKey, txHash } = await client.createEntity({
+        payload: jsonToPayload({
+            checkedInAt: new Date().toISOString(),
+        }),
+        contentType: 'application/json',
+        attributes: [
+            { key: 'app', value: APP_PREFIX },
+            { key: 'type', value: 'attendance' },
+            { key: 'eventKey', value: eventKey },
+            { key: 'attendee', value: attendeeWallet.toLowerCase() },
+            { key: 'checkedInBy', value: walletAddress.toLowerCase() },
         ],
         expiresIn: ExpirationTime.fromDays(expiryDays),
     });
@@ -368,6 +407,31 @@ export async function queryRsvps(eventKey: string): Promise<ParsedRsvp[]> {
             entityKey: entity.key,
             eventKey: getAttributeValue(entity, 'eventKey'),
             attendee: getAttributeValue(entity, 'attendee'),
+            status: getAttributeValue(entity, 'status') || 'confirmed',
+        };
+    });
+}
+
+export async function queryAttendances(eventKey: string): Promise<ParsedAttendance[]> {
+    const result = await publicClient
+        .buildQuery()
+        .where([
+            eq('app', APP_PREFIX),
+            eq('type', 'attendance'),
+            eq('eventKey', eventKey),
+        ])
+        .withAttributes(true)
+        .withPayload(true)
+        .fetch();
+
+    return (result.entities || []).map((entity: Entity) => {
+        const data = parsePayload<{ checkedInAt?: string }>(entity);
+        return {
+            entityKey: entity.key,
+            eventKey: getAttributeValue(entity, 'eventKey'),
+            attendee: getAttributeValue(entity, 'attendee'),
+            checkedInBy: getAttributeValue(entity, 'checkedInBy'),
+            checkedInAt: data.checkedInAt || '',
         };
     });
 }
