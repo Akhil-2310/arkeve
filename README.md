@@ -195,17 +195,52 @@ Open [http://localhost:3000](http://localhost:3000) for local development, or vi
 
 ## 🔗 Arkiv Integration
 
-ArkEve uses the [Arkiv Network SDK](https://www.npmjs.com/package/@arkiv-network/sdk) to store all data on-chain:
+ArkEve uses the [Arkiv Network SDK](https://www.npmjs.com/package/@arkiv-network/sdk) (`@arkiv-network/sdk`) as its **only** data layer — no traditional database.
 
-- **`createPublicClient`** — read-only client for querying entities (browse, search, profiles)
-- **`createWalletClient`** — wallet-connected client for creating/updating entities (uses Wagmi connector)
-- **`buildQuery().where().orderBy().fetch()`** — attribute-based filtering and sorting
-- **`createEntity()`** — create organizer profiles, events, RSVPs, attendance records
-- **`updateEntity()`** — edit event details, change event status
-- **`jsonToPayload()`** — serialize structured data into entity payloads
-- **`ExpirationTime.fromDays()`** — set differentiated expiration per entity type
+### Client Setup — [`src/lib/arkiv.ts`](src/lib/arkiv.ts)
 
-All transactions are signed by the user's browser wallet — no server-side private keys.
+| Client | Purpose |
+|--------|---------|
+| `createPublicClient` | Read-only client for all queries — browse page, event details, organizer profiles, RSVP lists |
+| `createWalletClient` | Write client using the user's Wagmi connector — every mutation prompts a wallet signature |
+
+### Entity CRUD & Queries — [`src/lib/entities.ts`](src/lib/entities.ts)
+
+This is the core Arkiv integration file containing all entity operations:
+
+**Write operations** (wallet-signed):
+| Function | SDK Method | Description |
+|----------|-----------|-------------|
+| `createOrganizerProfile()` | `createEntity()` | Creates organizer profile with `type: organizer`, expires 365 days |
+| `createEvent()` | `createEntity()` | Creates event with attributes for category, city, status, date. Expires eventDate + 7 days |
+| `updateEventStatus()` | `updateEntity()` | Transitions event status: `upcoming` → `live` → `ended` |
+| `updateEvent()` | `updateEntity()` | Edits event details (title, description, date, etc.) |
+| `createRsvp()` | `createEntity()` | Creates RSVP with `status: confirmed` or `status: waitlisted`. Expires eventDate + 1 day |
+| `createAttendance()` | `createEntity()` | Creates proof-of-attendance check-in record. Expires eventDate + 30 days |
+
+**Read operations** (public, no wallet needed):
+| Function | SDK Method | Description |
+|----------|-----------|-------------|
+| `queryEvents()` | `buildQuery().where().orderBy().fetch()` | Filters by category, city, `status=live`. Sorts by date ascending |
+| `queryEventByKey()` | `getEntity()` | Fetches a single event by its entity key |
+| `queryRsvps()` | `buildQuery().where().fetch()` | Fetches all RSVPs for an event (confirmed + waitlisted) |
+| `queryAttendances()` | `buildQuery().where().fetch()` | Fetches all check-in records for an event |
+| `queryOrganizerByWallet()` | `buildQuery().where().fetch()` | Looks up organizer profile by wallet address |
+| `queryEventsByOrganizer()` | `buildQuery().where().fetch()` | Fetches all events by a specific organizer |
+| `checkExistingRsvp()` | `buildQuery().where().fetch()` | Deduplication — checks if a wallet already RSVP'd to an event |
+
+**Utilities used:**
+- `jsonToPayload()` — serializes JSON data into entity payloads
+- `ExpirationTime.fromDays()` — sets differentiated expiration per entity type
+- `eq()` — creates equality predicates for attribute-based filtering
+
+### Wallet Config — [`src/lib/wagmiConfig.ts`](src/lib/wagmiConfig.ts)
+
+Configures the Kaolin testnet chain and RainbowKit wallet connector. The wallet provider is initialized in [`src/components/Providers.tsx`](src/components/Providers.tsx) and wallet state (connection, organizer lookup) is managed in [`src/contexts/WalletContext.tsx`](src/contexts/WalletContext.tsx).
+
+### Data Flow
+
+All transactions are signed by the user's browser wallet — no server-side private keys. The read path uses the public client so browsing, searching, and viewing events requires no wallet connection.
 
 ---
 
